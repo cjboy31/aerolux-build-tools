@@ -1,0 +1,6 @@
+llvm-mingw 20261104
+rust 1.99.1
+slang v2026.21
+python 3.15
+torch 2.15.0
+fetched 2026-11-07T07:52:21Z by run 42353043490
