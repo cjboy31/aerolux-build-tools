@@ -1,0 +1,65 @@
+name: Fetch toolchains
+on:
+  workflow_dispatch:
+    inputs:
+      llvm_mingw: {description: 'llvm-mingw release tag', default: '20261104'}
+      rust: {description: 'Rust version', default: '1.99.1'}
+      slang: {description: 'Slang release tag', default: 'v2026.21'}
+      python: {description: 'Python version', default: '3.15'}
+      torch: {description: 'PyTorch version', default: '2.15.0'}
+permissions:
+  contents: write
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download official releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LM: ${{ inputs.llvm_mingw }}
+          RV: ${{ inputs.rust }}
+          SV: ${{ inputs.slang }}
+          PY: ${{ inputs.python }}
+          TV: ${{ inputs.torch }}
+        run: |
+          set -euo pipefail
+          rm -rf dl && mkdir -p dl/llvm-mingw dl/rust dl/slang dl/python dl/torch
+          gh release download "$LM" -R mstorsjo/llvm-mingw -D dl/llvm-mingw -p "llvm-mingw-$LM-ucrt-ubuntu-*-x86_64.tar.xz"
+          gh release download "$SV" -R shader-slang/slang -D dl/slang -p "slang-${SV#v}-linux-x86_64.tar.gz"
+          gh release download -R astral-sh/python-build-standalone -D dl/python -p "cpython-$PY.*-x86_64-unknown-linux-gnu-install_only.tar.gz"
+          for f in rustc-$RV-x86_64-unknown-linux-gnu.tar.xz cargo-$RV-x86_64-unknown-linux-gnu.tar.xz \
+                   rust-std-$RV-x86_64-unknown-linux-gnu.tar.xz rust-std-$RV-x86_64-pc-windows-gnullvm.tar.xz rust-src-$RV.tar.xz; do
+            curl -fsSL --retry 3 -o "dl/rust/$f" "https://static.rust-lang.org/dist/$f"
+            curl -fsSL --retry 3 -o "dl/rust/$f.sha256" "https://static.rust-lang.org/dist/$f.sha256"
+            (cd dl/rust && echo "$(cut -d' ' -f1 "$f.sha256")  $f" | sha256sum -c -)
+          done
+          python3 -m pip download "torch==$TV" numpy --index-url https://download.pytorch.org/whl/cpu \
+            --extra-index-url https://pypi.org/simple --only-binary=:all: --python-version "$PY" \
+            --platform manylinux_2_28_x86_64 --platform manylinux2014_x86_64 --platform linux_x86_64 \
+            --platform any -d dl/torch
+      - name: Split into git-sized parts and commit
+        env:
+          LM: ${{ inputs.llvm_mingw }}
+          RV: ${{ inputs.rust }}
+          SV: ${{ inputs.slang }}
+          PY: ${{ inputs.python }}
+          TV: ${{ inputs.torch }}
+        run: |
+          set -euo pipefail
+          for d in llvm-mingw rust slang python torch; do
+            rm -rf "dist/$d" && mkdir -p "dist/$d"
+            (cd "dl/$d" && sha256sum * > "../../dist/$d/SHA256SUMS")
+            for f in dl/$d/*; do
+              b=$(basename "$f")
+              if [ "$(stat -c%s "$f")" -gt 95000000 ]; then split -b 90m -d -a 3 "$f" "dist/$d/$b.part"; else cp "$f" "dist/$d/"; fi
+            done
+          done
+          printf 'llvm-mingw %s\nrust %s\nslang %s\npython %s\ntorch %s\nfetched %s by run %s\n' \
+            "$LM" "$RV" "$SV" "$PY" "$TV" "$(date -u +%FT%TZ)" "$GITHUB_RUN_ID" > dist/VERSIONS.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add dist
+          git commit -m "Toolchains: llvm-mingw $LM, Rust $RV, Slang $SV, Python $PY, PyTorch $TV"
+          git push
