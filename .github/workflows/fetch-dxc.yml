@@ -1,0 +1,46 @@
+name: Fetch DXC
+# Microsoft's DirectX Shader Compiler (Linux x86-64 release), for compiling DXR / D3D12 shaders to DXIL.
+# Separate from fetch-toolchains.yml so the large toolchains are not fetched again.
+on:
+  workflow_dispatch:
+    inputs:
+      dxc: {description: 'DirectXShaderCompiler release tag (empty: the latest release)', default: ''}
+permissions:
+  contents: write
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download the official release and check its digest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DV: ${{ inputs.dxc }}
+        run: |
+          set -euo pipefail
+          tag="$DV"
+          if [ -z "$tag" ]; then tag=$(gh release view -R microsoft/DirectXShaderCompiler --json tagName -q .tagName); fi
+          rm -rf dl && mkdir -p dl/dxc
+          gh release download "$tag" -R microsoft/DirectXShaderCompiler -D dl/dxc -p 'linux_dxc_*.x86_64.tar.gz'
+          f=$(ls dl/dxc)
+          # GitHub's own SHA-256 of the release asset, when it records one.
+          want=$(gh api "repos/microsoft/DirectXShaderCompiler/releases/tags/$tag" -q ".assets[] | select(.name==\"$f\") | .digest // empty")
+          have="sha256:$(sha256sum "dl/dxc/$f" | cut -d' ' -f1)"
+          if [ -n "$want" ]; then [ "$want" = "$have" ] || { echo "digest mismatch: $want vs $have"; exit 1; }; echo "digest matches GitHub's: $have"; else echo "GitHub records no digest for $f; SHA256SUMS keeps $have"; fi
+          echo "TAG=$tag" >> "$GITHUB_ENV"
+      - name: Commit
+        run: |
+          set -euo pipefail
+          rm -rf dist/dxc && mkdir -p dist/dxc
+          (cd dl/dxc && sha256sum * > ../../dist/dxc/SHA256SUMS)
+          for f in dl/dxc/*; do
+            b=$(basename "$f")
+            if [ "$(stat -c%s "$f")" -gt 95000000 ]; then split -b 90m -d -a 3 "$f" "dist/dxc/$b.part"; else cp "$f" "dist/dxc/"; fi
+          done
+          printf 'dxc %s\nfetched %s by run %s\n' "$TAG" "$(date -u +%FT%TZ)" "$GITHUB_RUN_ID" > dist/dxc/VERSION.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add dist/dxc
+          git commit -m "DXC $TAG"
+          git push
