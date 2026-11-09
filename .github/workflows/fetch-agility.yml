@@ -1,0 +1,57 @@
+name: Fetch Agility SDK
+# Microsoft's DirectX 12 Agility SDK NuGet package (Microsoft.Direct3D.D3D12), unmodified: headers,
+# D3D12Core.dll and the package licence. Checked against NuGet's recorded package hash and
+# Microsoft's package signature. Owner, 2026-11-09: use 1.722.0-preview.
+on:
+  workflow_dispatch:
+    inputs:
+      version: {description: 'Microsoft.Direct3D.D3D12 package version', default: '1.722.0-preview'}
+permissions:
+  contents: write
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download the package and check its hash and signature
+        env:
+          V: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          case "$V" in *[!0-9A-Za-z.-]*|'') echo "bad version '$V'"; exit 1;; esac
+          id=microsoft.direct3d.d3d12
+          lv=$(echo "$V" | tr 'A-Z' 'a-z')
+          rm -rf dl && mkdir -p dl
+          curl -fsSL -o "dl/$id.$lv.nupkg" "https://api.nuget.org/v3-flatcontainer/$id/$lv/$id.$lv.nupkg"
+          # NuGet's own record of the package hash (catalog entry of this version).
+          entry=$(curl -fsSL "https://api.nuget.org/v3/registration5-semver1/$id/$lv.json" | jq -r .catalogEntry)
+          meta=$(curl -fsSL "$entry")
+          algo=$(echo "$meta" | jq -r .packageHashAlgorithm)
+          want=$(echo "$meta" | jq -r .packageHash)
+          [ "$algo" = "SHA512" ] || { echo "unexpected hash algorithm $algo"; exit 1; }
+          have=$(openssl dgst -sha512 -binary "dl/$id.$lv.nupkg" | base64 -w0)
+          [ "$want" = "$have" ] || { echo "package hash mismatch"; exit 1; }
+          echo "package hash matches NuGet's record"
+          # Microsoft's author signature on the package (and nuget.org's repository signature).
+          dotnet nuget verify --all "dl/$id.$lv.nupkg" | tee dl/verify.txt
+          grep -q 'Signature type: Author' dl/verify.txt
+          grep -Eq 'Subject Name: CN=Microsoft Corporation' dl/verify.txt
+          echo "LV=$lv" >> "$GITHUB_ENV"
+      - name: Commit
+        env:
+          V: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          d="dist/agility/$LV"
+          rm -rf "$d" && mkdir -p "$d"
+          f=$(ls dl/*.nupkg)
+          (cd dl && sha256sum "$(basename "$f")" > "../$d/SHA256SUMS")
+          if [ "$(stat -c%s "$f")" -gt 95000000 ]; then split -b 90m -d -a 3 "$f" "$d/$(basename "$f").part"; else cp "$f" "$d/"; fi
+          cp dl/verify.txt "$d/nuget-verify.txt"
+          printf 'Microsoft.Direct3D.D3D12 %s\nfetched %s by run %s\n' "$V" "$(date -u +%FT%TZ)" "$GITHUB_RUN_ID" > "$d/VERSION.txt"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add dist/agility
+          git commit -m "Agility SDK $V"
+          git push
