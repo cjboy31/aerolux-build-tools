@@ -22,7 +22,7 @@ jobs:
           tag="$DV"
           if [ -z "$tag" ]; then tag=$(gh release view -R microsoft/DirectXShaderCompiler --json tagName -q .tagName); fi
           rm -rf dl && mkdir -p dl/dxc
-          gh release download "$tag" -R microsoft/DirectXShaderCompiler -D dl/dxc -p 'linux_dxc_*.x86_64.tar.gz'
+          gh release download "$tag" -R microsoft/DirectXShaderCompiler -D dl/dxc -p 'linux_dxc_*'
           f=$(ls dl/dxc)
           # GitHub's own SHA-256 of the release asset, when it records one.
           want=$(gh api "repos/microsoft/DirectXShaderCompiler/releases/tags/$tag" -q ".assets[] | select(.name==\"$f\") | .digest // empty")
