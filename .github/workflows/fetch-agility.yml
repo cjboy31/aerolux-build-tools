@@ -1,11 +1,13 @@
 name: Fetch Agility SDK
 # Microsoft's DirectX 12 Agility SDK NuGet package (Microsoft.Direct3D.D3D12), unmodified: headers,
 # D3D12Core.dll and the package licence. Checked against NuGet's recorded package hash and
-# Microsoft's package signature. Owner, 2026-11-09: use 1.722.0-preview.
+# Microsoft's package signature. RETAIL versions only: the preview packages' licence (section 4e)
+# forbids sharing, publishing or distributing them, and this repository is public. Preview
+# packages are fetched from nuget.org on the machine that uses them, never mirrored here.
 on:
   workflow_dispatch:
     inputs:
-      version: {description: 'Microsoft.Direct3D.D3D12 package version', default: '1.722.0-preview'}
+      version: {description: 'Microsoft.Direct3D.D3D12 retail package version (no -preview)', default: '1.620.1'}
 permissions:
   contents: write
 jobs:
@@ -19,7 +21,7 @@ jobs:
           V: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          case "$V" in *[!0-9A-Za-z.-]*|'') echo "bad version '$V'"; exit 1;; esac
+          case "$V" in *[!0-9.]*|'') echo "only retail versions (digits and dots); preview packages may not be redistributed"; exit 1;; esac
           id=microsoft.direct3d.d3d12
           lv=$(echo "$V" | tr 'A-Z' 'a-z')
           rm -rf dl && mkdir -p dl

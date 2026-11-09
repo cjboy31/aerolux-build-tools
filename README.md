@@ -3,4 +3,4 @@ Mirror of official toolchain releases (llvm-mingw, Rust, Slang, Python, PyTorch)
 
 DXC (Microsoft DirectX Shader Compiler, Linux x86-64) comes from its own manual workflow `fetch-dxc.yml` into `dist/dxc`, with the release asset checked against GitHub's recorded SHA-256.
 
-The DirectX 12 Agility SDK (NuGet `Microsoft.Direct3D.D3D12`, owner: 1.722.0-preview) comes from its own manual workflow `fetch-agility.yml` into `dist/agility/<version>`, checked against NuGet's recorded SHA-512 and Microsoft's package signature. The package is kept unmodified with its licence.
+The DirectX 12 Agility SDK (NuGet `Microsoft.Direct3D.D3D12`) can come from the manual workflow `fetch-agility.yml` into `dist/agility/<version>`, retail versions only, checked against NuGet's recorded SHA-512 and Microsoft's package signature. Preview packages (such as 1.722.0-preview) are not mirrored here: their licence forbids sharing or distributing them.
